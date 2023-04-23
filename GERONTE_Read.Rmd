@@ -27,12 +27,12 @@ Each contains six files
 e.g.
 
 ```
-GERONTE_FRONE20230407_SAS_Category.txt  GERONTE_FRONE20230407_SAS_Label.txt
-GERONTE_FRONE20230407_SAS_Data.txt      GERONTE_FRONE20230407_SAS_QLU.txt
-GERONTE_FRONE20230407_SAS_Format.txt    GERONTE_FRONE20230407_SAS_Type.txt
+STUDY_NAME_SAS_Category.txt  STUDY_NAME_SAS_Label.txt
+STUDY_NAME_SAS_Data.txt      STUDY_NAME_SAS_QLU.txt
+STUDY_NAME_SAS_Format.txt    STUDY_NAME_SAS_Type.txt
 ```
 
-The key is the name before the .txt.
+The key is the part of the name after SAS_ and before the .txt.
 
 ```{r Basic lists of files and directories etc}
 Directories <- list.files(path=".")
@@ -93,7 +93,6 @@ return(Results)
 }
 ```
 
-
 ```{r List_to_tibble}
 
 #
@@ -101,8 +100,15 @@ return(Results)
 # # Credit to A5C1D2H2I1M1N2O1R2T1
 #
 
-List_to_tibble <- function(inlist, PRINT = FALSE) {
-  Names <- unlist(inlist[1]) # First row as a character variable
+List_to_tibble <- function(inlist, NAMES, PRINT = FALSE) {
+
+  stopifnot (is.logical(NAMES),
+             is.logical(PRINT))
+
+  if (NAMES){
+    Names <- unlist(inlist[1]) # First row as a character variable
+    inlist <- inlist[-1]
+  }
 
   if(PRINT) {
     print("\n\n===========================================\n\n")
@@ -110,11 +116,11 @@ List_to_tibble <- function(inlist, PRINT = FALSE) {
     print(str(inlist))
     print("\n\n===========================================\n\n")}
 
-  x <- as.data.frame(do.call(rbind, inlist[-1]))
+  x <- as.data.frame(do.call(rbind, inlist))
 
   if(PRINT) {
     print("\n\n===========================================\n\n")
-    print("as.data.frame(do.call(rbind, inlist[-1])) \n")
+    print("as.data.frame(do.call(rbind, inlist)) \n")
     print(str(x))
     print("\n\n===========================================\n\n")}
 
@@ -126,7 +132,8 @@ List_to_tibble <- function(inlist, PRINT = FALSE) {
     print(str(x))
     print("\n\n===========================================\n\n")}
   
-  names(x) <- Names
+  if (NAMES) {names(x) <- Names}
+  
   x <- tibble(x)
 
   if(PRINT) {
@@ -141,6 +148,23 @@ List_to_tibble <- function(inlist, PRINT = FALSE) {
 ```
 
 Work through this one subdirectory and one file at a time
+
+```{r Set the Directory to work on}
+## Remove the initial # from the relevant line to pick the directory you want to look at.
+
+#DIRECTORY = "APN"
+#DIRECTORY = "EOS"
+#DIRECTORY = "FPROG" # BLANK DIRECTORY
+#DIRECTORY = "HOSPITA"
+#DIRECTORY = "INC"
+#DIRECTORY = "INSTI"
+#DIRECTORY = "SAE"
+DIRECTORY = "TRT" # SAS FORMAT file is empty
+#DIRECTORY = "VIS_3M"
+#DIRECTORY = "VIS_6M"
+#DIRECTORY = "VIS_9M"
+#DIRECTORY = "VIS_12M"
+```
 
 # SAS_Category
 
@@ -159,7 +183,8 @@ Read the whole lot in, ignoring carriage returns, so separate only at ;
 Swap equals so 1='Yes' becomes 'Yes'=1 etc...
 
 ```{r Read SAS_Category}
-RR <- readLines("APN/GERONTE_FRONE20230407_SAS_Category.txt", skipNul = TRUE)
+RR <- readLines(paste0(DIRECTORY, "/GERONTE_FRONE20230407_SAS_Category.txt"),
+                encoding = 'UTF-8', skipNul = TRUE)
 RR <- str_replace_all(RR, "\xff\xfe", "")
 str(RR)
 ```
@@ -210,7 +235,8 @@ DT_4APN ddmmyy10.
 DT_5APN ddmmyy10.
 
 ```{r Read SAS_FORMAT}
-RR <- readLines("APN/GERONTE_FRONE20230407_SAS_Format.txt", skipNul = TRUE)
+RR <- readLines(paste0(DIRECTORY, "/GERONTE_FRONE20230407_SAS_Format.txt"),
+                       encoding = 'UTF-8', skipNul = TRUE)
 RR <- str_replace_all(RR, "\xff\xfe", "")
 str(RR)
 ```
@@ -252,7 +278,8 @@ HOS1ACT="Interv 1 : Hospit"
 
 
 ```{r Read SAS_LABEL}
-RR <- readLines("APN/GERONTE_FRONE20230407_SAS_Label.txt", encoding = 'UTF-8', skipNul = TRUE)
+RR <- readLines(paste0(DIRECTORY, "/GERONTE_FRONE20230407_SAS_Label.txt"),
+                       encoding = 'UTF-8', skipNul = TRUE)
 RR <- str_replace_all(RR, "\xff\xfe", "")
 str(RR)
 ```
@@ -290,7 +317,8 @@ APN/APN_CON/PT_LET	PT_LET	Patient Letter derivé	Text
 
 
 ```{r Read SAS_QLU}
-RR <- readLines("APN/GERONTE_FRONE20230407_SAS_QLU.txt", encoding = 'UTF-8', skipNul = TRUE)
+RR <- readLines(paste0(DIRECTORY, "/GERONTE_FRONE20230407_SAS_QLU.txt"),
+                encoding = 'UTF-8', skipNul = TRUE)
 RR <- str_replace_all(RR, "\xff\xfe", "")
 str(RR)
 ```
@@ -307,7 +335,7 @@ Input <- tibble(Text = RR) %>%
 
 rm(RR)
 
-QLU <- List_to_tibble(Input$List_of_Lists)
+QLU <- List_to_tibble(Input$List_of_Lists, NAMES = TRUE, PRINT=FALSE)
 QLU <- QLU %>%
     mutate(Type = str_replace(Type, 'Date_Time', 'Date/Time'))
 
@@ -320,7 +348,7 @@ rm(Input)
 ```
 
 # SAS_Type
-
+[First seven variables are different in some way]
 Looks like this
 Trial :$13.
 Site :$8.
@@ -336,7 +364,8 @@ APN_C :2.
 DT_1APN :ddmmyy10.
 
 ```{r Read SAS_Type}
-RR <- readLines("APN/GERONTE_FRONE20230407_SAS_Type.txt", skipNul = TRUE)
+RR <- readLines(paste0(DIRECTORY, "/GERONTE_FRONE20230407_SAS_Type.txt"),
+                encoding = 'UTF-8', skipNul = TRUE)
 RR <- str_replace_all(RR, "\xff\xfe", "")
 str(RR)
 ```
@@ -364,4 +393,30 @@ SAS_TYPE <- Input %>%
 rm(Input)
 ```
 
+# SAS_Data
 
+```{r Read SAS_DATA}
+RR <- readLines(paste0(DIRECTORY, "/GERONTE_FRONE20230407_SAS_Data.txt"),
+                encoding = 'UTF-8', skipNul = TRUE)
+RR <- str_replace_all(RR, "\xff\xfe", "")
+str(RR)
+```
+
+
+```{r Process SAS_QLU}
+Input <- tibble(Text = RR) %>%
+  filter(Text != "") %>% # remove blank entries
+  mutate(ID = seq(1:length(Text))) %>% # ID variable
+  select(ID, Text) %>% # Right order
+  mutate(List_of_Lists =
+           str_split(Text, pattern = "(\\t)"))
+
+#rm(RR)
+str(Input$List_of_Lists)
+
+DATA <- List_to_tibble(Input$List_of_Lists, NAMES=FALSE, PRINT=FALSE)
+
+SAS_DATA <- Input %>%
+  cbind(DATA)
+#rm Input
+```
