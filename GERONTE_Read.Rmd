@@ -1,0 +1,367 @@
+---
+title: "Read SAS directory"
+author: "Anthony Staines"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Introduction
+
+GERONTE <https://geronteproject.eu/> is a Research and innovation project funded by the European Union within the framework of the H2020 Research and Innovation programme - Transforming Patient Care under grant agreement No. 945218.
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+library(stringr)
+library(tidyverse)
+library(haven)
+library(labelled)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Basic logic
+
+Go to a directory.
+Each contains six files
+
+e.g.
+
+```
+GERONTE_FRONE20230407_SAS_Category.txt  GERONTE_FRONE20230407_SAS_Label.txt
+GERONTE_FRONE20230407_SAS_Data.txt      GERONTE_FRONE20230407_SAS_QLU.txt
+GERONTE_FRONE20230407_SAS_Format.txt    GERONTE_FRONE20230407_SAS_Type.txt
+```
+
+The key is the name before the .txt.
+
+```{r Basic lists of files and directories etc}
+Directories <- list.files(path=".")
+    Directories <-  # Exclude most files
+      Directories[
+        !str_detect(Directories, '\\.')]
+## APN
+APN <- list.files(path = Directories[[1]],
+                  recursive = TRUE)
+
+##EOS
+EOS <- list.files(path = Directories[[2]],
+                  recursive = TRUE)
+
+##etc...
+
+## File types - there are six.
+Type <- "_([A-z]+)\\."
+
+Types <- str_extract(APN, Type)
+    Types <- str_replace(Types,"_SAS_", "")
+      Types <- str_replace(Types, "\\.", "")
+
+rm(Type)
+```
+
+# Functions
+
+```{r SWAP function}
+
+# Need to swap 1='Yes' to 'Yes'=1
+
+Swap_over_equal_sign <- function(Dataframe, Text) {
+  
+  Text = Dataframe$Text
+
+  result <- str_match(Text, "(^[\\w]+)(=)(.+)")
+  # Three matching groups
+  # (1) A word from the beginning
+  # (2) A literal = sign
+  # (3) The rest of the line to the end
+
+  results <- tibble(V1 = result[,1],
+                    V2 = result[,2],
+                    V3 = result[,3],
+                    V4 = result[,4])
+  
+  Results <- results %>%
+    mutate(V5 = # Put the terminal ; in a separate field
+             ifelse(str_detect(V4,';'),';','')) %>%
+    mutate(V4 = # Lose the original ;
+             str_replace(V4, ';', '')) %>%
+    mutate(Swapped = # Glue the pieces together backwards
+             paste0(V4,V3,V2)) %>%
+    select(Swapped, V1, V2, V3, V4, V5) # Reorder as desired
+
+return(Results)
+}
+```
+
+
+```{r List_to_tibble}
+
+#
+# From https://stackoverflow.com/questions/42642266/turn-a-list-of-lists-with-unnamed-entries-into-a-data-frame-or-a-tibble
+# # Credit to A5C1D2H2I1M1N2O1R2T1
+#
+
+List_to_tibble <- function(inlist, PRINT = FALSE) {
+  Names <- unlist(inlist[1]) # First row as a character variable
+
+  if(PRINT) {
+    print("\n\n===========================================\n\n")
+    print("List of lists \n")
+    print(str(inlist))
+    print("\n\n===========================================\n\n")}
+
+  x <- as.data.frame(do.call(rbind, inlist[-1]))
+
+  if(PRINT) {
+    print("\n\n===========================================\n\n")
+    print("as.data.frame(do.call(rbind, inlist[-1])) \n")
+    print(str(x))
+    print("\n\n===========================================\n\n")}
+
+  x[] <- lapply(x, unlist)
+
+  if(PRINT) {
+    print("\n\n===========================================\n\n")
+    print(" x[] <- lapply(x, unlist) \n")
+    print(str(x))
+    print("\n\n===========================================\n\n")}
+  
+  names(x) <- Names
+  x <- tibble(x)
+
+  if(PRINT) {
+    print("\n\n===========================================\n\n")
+    print("x <- tibble(x) \n")
+    print(str(x))
+    print("\n\n===========================================\n\n")}
+
+  return(x)
+}
+
+```
+
+Work through this one subdirectory and one file at a time
+
+# SAS_Category
+
+These look like this one, and hold value labels.
+
+Value APN_C 1='Yes'
+            0='No';
+Value TYP1APN 1='Face to face'
+              2='Web based'
+              3='Phone call';
+Value CHA1ACT 1='Yes'
+              0='No';
+
+To read these
+Read the whole lot in, ignoring carriage returns, so separate only at ; 
+Swap equals so 1='Yes' becomes 'Yes'=1 etc...
+
+```{r Read SAS_Category}
+RR <- readLines("APN/GERONTE_FRONE20230407_SAS_Category.txt", skipNul = TRUE)
+RR <- str_replace_all(RR, "\xff\xfe", "")
+str(RR)
+```
+
+```{r Process SAS_Category}
+Input <- tibble(Text = RR) %>%
+  filter(Text != "") %>% # remove blank entries
+  mutate(ID = seq(1:length(Text))) %>% # ID variable
+  select(ID, Text) %>% # Right order
+  mutate(Value = # Create a logical Value to identify lines with variable names
+           str_detect(Text, "^Value ")) %>% # The text 'Value ' at the start of a line
+  mutate(Text = # Remove the initial Value from those lines
+           str_replace(Text, "^Value ", "")) %>%
+  mutate(Name = # Create a column with the variable name
+           str_extract(Text, "^[\\w]+")) %>% ## + has to be outside the [] bracket
+  fill(Name) %>% # Name is only filled for the first code in each variable, so fix this.
+  mutate(Text = #Remove the variable name from the Text
+           str_replace(Text, "^[\\w]+", "")) %>%
+  mutate(Text = str_trim(Text)) # Remove whitespace
+
+rm(RR)
+
+Results <- Input %>% Swap_over_equal_sign(Text) # Text is field with labels in it.
+
+Output <- cbind(Input , Results)
+
+rm(Input, Results)
+
+# Each variable now has several rows. We want a structure where each variable has one row, with the right number of columns.
+# 
+
+SAS_CATEGORY <- Output %>%
+  group_by(Name) %>%
+  summarise(LABEL = toString(Swapped)) %>%
+  ungroup()
+
+rm(Output)
+```
+
+# SAS_Format
+
+This contains formats for date variables only, for some reason?
+Looks like this - 
+DT_1APN ddmmyy10.
+DT_2APN ddmmyy10.
+DT_3APN ddmmyy10.
+DT_4APN ddmmyy10.
+DT_5APN ddmmyy10.
+
+```{r Read SAS_FORMAT}
+RR <- readLines("APN/GERONTE_FRONE20230407_SAS_Format.txt", skipNul = TRUE)
+RR <- str_replace_all(RR, "\xff\xfe", "")
+str(RR)
+```
+
+```{r Process SAS_FORMAT}
+Input <- tibble(Text = RR) %>%
+  filter(Text != "") %>% # remove blank entries
+  mutate(ID = seq(1:length(Text))) %>% # ID variable
+  select(ID, Text) %>% # Right order
+  mutate(Name = # Create a column with the variable name
+           str_extract(Text, "^[\\w]+")) %>% ## + has to be outside the  [] bracket
+ mutate(Text = #Remove the variable name from the Text
+           str_replace(Text, "^[\\w]+", "")) %>%
+  mutate(Text = str_trim(Text)) # Remove whitespace
+
+SAS_FORMAT <- Input %>%
+  rename(Format = Text) %>%
+  select(ID, Name, Format)
+```
+
+# SAS_Label
+
+These are variable labels, and look like
+PT_CEN="Patient Center derivé"
+PT_NUM="Patient Number derivé"
+PT_LET="Patient Letter derivé"
+APN_C="APN"
+DT_1APN="Date APN 1"
+TYP1APN="Type APN 1"
+CHA1ACT="Interv 1 : Treatment"
+CHA1NB="Treatment 1 : Number"
+GEN1ACT="Interv 1 : Lifestyle"
+GEN1NB="Lifestyle 1 : Number"
+CAL1ACT="Interv 1 :Extra HPC"
+CAL1NB="Extra HPC 1 : Number"
+HPC1ACT="Interv 1 : HPC"
+HPC1NB="HPC 1 : Number"
+HOS1ACT="Interv 1 : Hospit"
+
+
+```{r Read SAS_LABEL}
+RR <- readLines("APN/GERONTE_FRONE20230407_SAS_Label.txt", encoding = 'UTF-8', skipNul = TRUE)
+RR <- str_replace_all(RR, "\xff\xfe", "")
+str(RR)
+```
+
+```{r Process SAS_LABEL}
+Input <- tibble(Text = RR) %>%
+  filter(Text != "") %>% # remove blank entries
+  mutate(ID = seq(1:length(Text))) %>% # ID variable
+  select(ID, Text) %>% # Right order
+  mutate(Name = # Create a column with the variable name
+           str_extract(Text, "^[\\w]+")) %>% ## + has to be outside the  [] bracket
+  mutate(Text = #Remove the variable name and the equals sign from the Text
+           str_replace(Text, "^[\\w]+=", "")) %>%
+  mutate(Text = # Remove the initial an final " from the SAS types
+           str_replace_all(Text, "\"", "")) %>%
+  mutate(Text = str_trim(Text)) # Remove whitespace
+
+rm(RR)
+
+SAS_LABEL <- Input %>%
+  rename(Label = Text) %>%
+  select(ID, Name, Label)
+
+rm(Input)
+```
+
+# SAS QLU
+
+Looks like this 
+
+Visit/Form/Question	SASCode	Description	Type
+APN/APN_CON/PT_CEN	PT_CEN	Patient Center derivé	Integer number
+APN/APN_CON/PT_NUM	PT_NUM	Patient Number derivé	Integer number
+APN/APN_CON/PT_LET	PT_LET	Patient Letter derivé	Text
+
+
+```{r Read SAS_QLU}
+RR <- readLines("APN/GERONTE_FRONE20230407_SAS_QLU.txt", encoding = 'UTF-8', skipNul = TRUE)
+RR <- str_replace_all(RR, "\xff\xfe", "")
+str(RR)
+```
+
+
+```{r Process SAS_QLU}
+Input <- tibble(Text = RR) %>%
+  filter(Text != "") %>% # remove blank entries
+  mutate(ID = seq(1:length(Text))) %>% # ID variable
+  select(ID, Text) %>% # Right order
+  mutate(Text = str_replace(Text, 'Date/Time', 'Date_Time')) %>%
+  mutate(List_of_Lists =
+           str_split(Text, pattern = "(/|\\t)"))
+
+rm(RR)
+
+QLU <- List_to_tibble(Input$List_of_Lists)
+QLU <- QLU %>%
+    mutate(Type = str_replace(Type, 'Date_Time', 'Date/Time'))
+
+SAS_QLU <- Input %>%
+  slice_head(n = -1) %>% # Remove 'Names' row
+  cbind(QLU) %>%
+  rename(QLU = Text)
+
+rm(Input)
+```
+
+# SAS_Type
+
+Looks like this
+Trial :$13.
+Site :$8.
+Label :$50.
+PersonId :5.
+VisCycle :5.
+FrmCycle :5.
+RepeatNo :5.
+PT_CEN :2.
+PT_NUM :3.
+PT_LET :$3.
+APN_C :2.
+DT_1APN :ddmmyy10.
+
+```{r Read SAS_Type}
+RR <- readLines("APN/GERONTE_FRONE20230407_SAS_Type.txt", skipNul = TRUE)
+RR <- str_replace_all(RR, "\xff\xfe", "")
+str(RR)
+```
+
+```{r Process SAS_TYPE}
+Input <- tibble(Text = RR) %>%
+  filter(Text != "") %>% # remove blank entries
+  mutate(ID = seq(1:length(Text))) %>% # ID variable
+  select(ID, Text) %>% # Right order
+  mutate(Name = # Create a column with the variable name
+           str_extract(Text, "^[\\w]+")) %>% ## + has to be outside the  [] bracket
+  mutate(Text = #Remove the variable name from the Text
+           str_replace(Text, "^[\\w]+", "")) %>%
+  mutate(Text = str_trim(Text)) %>% # Remove whitespace
+  mutate(Text = # Remove the initial : from the SAS types
+           str_replace(Text, "^:", "")) %>%
+  mutate(Text = str_trim(Text)) # Remove whitespace
+
+rm(RR)
+
+SAS_TYPE <- Input %>%
+  rename(Type = Text) %>%
+  select(ID, Name, Type)
+
+rm(Input)
+```
+
+
