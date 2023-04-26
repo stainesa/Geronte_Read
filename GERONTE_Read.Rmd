@@ -158,8 +158,8 @@ Work through this one subdirectory and one file at a time
 #DIRECTORY = "HOSPITA"
 #DIRECTORY = "INC"
 #DIRECTORY = "INSTI"
-#DIRECTORY = "SAE"
-DIRECTORY = "TRT" # SAS FORMAT file is empty
+DIRECTORY = "SAE"
+#DIRECTORY = "TRT" # SAS FORMAT file is empty
 #DIRECTORY = "VIS_3M"
 #DIRECTORY = "VIS_6M"
 #DIRECTORY = "VIS_9M"
@@ -344,7 +344,7 @@ SAS_QLU <- Input %>%
   cbind(QLU) %>%
   rename(QLU = Text)
 
-rm(Input)
+rm(QLU, Input)
 ```
 
 # SAS_Type
@@ -403,7 +403,7 @@ str(RR)
 ```
 
 
-```{r Process SAS_QLU}
+```{r Process SAS_DATA}
 Input <- tibble(Text = RR) %>%
   filter(Text != "") %>% # remove blank entries
   mutate(ID = seq(1:length(Text))) %>% # ID variable
@@ -411,12 +411,14 @@ Input <- tibble(Text = RR) %>%
   mutate(List_of_Lists =
            str_split(Text, pattern = "(\\t)"))
 
-#rm(RR)
-str(Input$List_of_Lists)
+rm(RR)
+#str(Input$List_of_Lists)
 
 DATA <- List_to_tibble(Input$List_of_Lists, NAMES=FALSE, PRINT=FALSE)
 
 SAS_DATA <- Input %>%
   cbind(DATA)
-#rm Input
+
+rm(DATA, Input)
 ```
+
